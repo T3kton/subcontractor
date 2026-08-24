@@ -92,6 +92,15 @@ class Main( Daemon ):  # TODO: cache to local cache file
         logging.exception( 'Exception occured during main loop, stopping!' )
         stop_event.set()
 
+    if dhcp_server_task.done():  # if the task died on its own, nothing else retrieves the exception
+      try:
+        exception = dhcp_server_task.exception()
+      except CancelledError:
+        exception = None
+
+      if exception is not None:
+        logging.error( 'DHCP server task exited unexpectedly!', exc_info=exception )
+
     logging.info( 'Stopping...' )
     self.dhcpd.stop()
     if not stop_event.is_set():

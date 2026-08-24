@@ -125,6 +125,7 @@ class DHCPd( DhcpServer ):
     mac = hwmac( request.GetHardwareAddress() ).str()
     logging.info( 'DHCPd: Recieved Discover from "{0}"'.format( mac ) )
 
+    item = None
     for name in self.pool_order:
       item = await self.pool_map[ name ].lookup( mac, True )
       if item is not None:
@@ -138,15 +139,16 @@ class DHCPd( DhcpServer ):
     reply.CreateDhcpOfferPacketFrom( request )
     self.setOptions( request, reply, item )
 
-    logging.info( 'DHCPd: Sending Offer to "{0}"'.format( mac ) )
     logging.debug( 'DHCPd: Sending Offer:\n{0}'.format( reply.str() ) )
-    self.SendDhcpPacket( request, reply )
+    result = self.SendDhcpPacket( request, reply )
+    logging.info( 'DHCPd: Sent Offer to "{0}" (result: {1})'.format( mac, result ) )
 
   async def HandleDhcpRequest( self, request ):
     logging.debug( 'DHCPd: Received Request:\n{0}'.format( request.str() ) )
     mac = hwmac( request.GetHardwareAddress() ).str()
     logging.info( 'DHCPd: Recieved Request from "{0}"'.format( mac ) )
 
+    item = None
     for name in self.pool_order:
       item = await self.pool_map[ name ].lookup( mac, True )
       if item is not None:
@@ -160,9 +162,9 @@ class DHCPd( DhcpServer ):
     reply.CreateDhcpAckPacketFrom( request )
     self.setOptions( request, reply, item )
 
-    logging.info( 'DHCPd: Sending Ack to "{0}"'.format( mac ) )
     logging.debug( 'DHCPd: Sending Ack:\n{0}'.format( reply.str() ) )
-    self.SendDhcpPacket( request, reply )
+    result = self.SendDhcpPacket( request, reply )
+    logging.info( 'DHCPd: Sent Ack to "{0}" (result: {1})'.format( mac, result ) )
 
   async def HandleDhcpDecline( self, request ):
     logging.debug( 'DHCPd: Revieved Decline:\n{0}'.format( request.str() ) )
