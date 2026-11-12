@@ -9,6 +9,27 @@ from pydhcplib.type_strlist import strlist
 from pydhcplib.type_hwmac import hwmac
 from pydhcplib.interface import interface
 
+# iPXE's settings live in the encapsulated option block of option 175, see
+# DHCP_EB_ENCAP/DHCP_EB_NO_PXEDHCP in iPXE's include/ipxe/dhcp.h
+IPXE_ENCAP_NO_PXEDHCP = 0xb0
+
+
+def _rfc3397( name_list ):
+  # encode a list of domain names in the DNS name format required by RFC 3397
+  result = []
+  for name in name_list:
+    for label in name.split( '.' ):
+      if not label:
+        continue
+
+      label = label.encode()
+      result.append( len( label ) )
+      result += list( label )
+
+    result.append( 0 )
+
+  return result
+
 
 class DHCPd( DhcpServer ):
   def __init__( self, listen_interface, listen_address, tftp_server ):
@@ -42,7 +63,7 @@ class DHCPd( DhcpServer ):
 
     if domain_name:
       reply.SetOption( 'domain_name', domain_name )
-      reply.SetOption( 'domain_search', [ domain_name ] )
+      reply.SetOption( 'domain_search', _rfc3397( [ bytes( domain_name ).decode() ] ) )
 
     if dns_server:
       reply.SetOption( 'domain_name_server', dns_server )
@@ -57,7 +78,7 @@ class DHCPd( DhcpServer ):
       reply.SetOption( 'config_file', config_uuid )
 
     if user_class == 'iPXE':
-      reply.SetOption( 'ipxe.no-pxedhcp', [ 1 ] )  # disable iPXE's waiting on proxy DHCP
+      reply.SetOption( 'ipxe', [ IPXE_ENCAP_NO_PXEDHCP, 1, 1 ] )  # disable iPXE's waiting on proxy DHCP
 
     if DhcpOptions[ 'bootfile_name' ] in parameter_request_list and console is not None:
       reply.SetOption( 'siaddr', self.tftp_server )
@@ -104,6 +125,7 @@ class DHCPd( DhcpServer ):
     mac = hwmac( request.GetHardwareAddress() ).str()
     logging.info( 'DHCPd: Recieved Discover from "{0}"'.format( mac ) )
 
+    item = None
     for name in self.pool_order:
       item = await self.pool_map[ name ].lookup( mac, True )
       if item is not None:
@@ -117,15 +139,16 @@ class DHCPd( DhcpServer ):
     reply.CreateDhcpOfferPacketFrom( request )
     self.setOptions( request, reply, item )
 
-    logging.info( 'DHCPd: Sending Offer to "{0}"'.format( mac ) )
     logging.debug( 'DHCPd: Sending Offer:\n{0}'.format( reply.str() ) )
-    self.SendDhcpPacket( request, reply )
+    result = self.SendDhcpPacket( request, reply )
+    logging.info( 'DHCPd: Sent Offer to "{0}" (result: {1})'.format( mac, result ) )
 
   async def HandleDhcpRequest( self, request ):
     logging.debug( 'DHCPd: Received Request:\n{0}'.format( request.str() ) )
     mac = hwmac( request.GetHardwareAddress() ).str()
     logging.info( 'DHCPd: Recieved Request from "{0}"'.format( mac ) )
 
+    item = None
     for name in self.pool_order:
       item = await self.pool_map[ name ].lookup( mac, True )
       if item is not None:
@@ -139,9 +162,9 @@ class DHCPd( DhcpServer ):
     reply.CreateDhcpAckPacketFrom( request )
     self.setOptions( request, reply, item )
 
-    logging.info( 'DHCPd: Sending Ack to "{0}"'.format( mac ) )
     logging.debug( 'DHCPd: Sending Ack:\n{0}'.format( reply.str() ) )
-    self.SendDhcpPacket( request, reply )
+    result = self.SendDhcpPacket( request, reply )
+    logging.info( 'DHCPd: Sent Ack to "{0}" (result: {1})'.format( mac, result ) )
 
   async def HandleDhcpDecline( self, request ):
     logging.debug( 'DHCPd: Revieved Decline:\n{0}'.format( request.str() ) )
